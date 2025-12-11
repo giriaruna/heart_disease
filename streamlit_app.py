@@ -99,12 +99,38 @@ def preprocess_train_test(X_train, X_test):
     numeric_cols = X_train_clean.select_dtypes(include=[np.number]).columns
     
     for col in numeric_cols:
-        if X_train_clean[col].isnull().sum() > 0:
-            # Calculate median from training data only
-            imputation_values[col] = X_train_clean[col].median()
-            # Apply to both training and test sets
-            X_train_clean[col].fillna(imputation_values[col], inplace=True)
-            X_test_clean[col].fillna(imputation_values[col], inplace=True)
+        # Calculate median from training data only (even if no missing values in train)
+        train_median = X_train_clean[col].median()
+        
+        # Handle edge case: if all values are NaN in training, use 0 as fallback
+        if pd.isna(train_median):
+            train_median = 0
+        
+        imputation_values[col] = train_median
+        
+        # Apply to both training and test sets (handles NaNs in either set)
+        X_train_clean[col].fillna(train_median, inplace=True)
+        X_test_clean[col].fillna(train_median, inplace=True)
+    
+    # Handle non-numeric columns with missing values (use mode for categorical)
+    non_numeric_cols = X_train_clean.select_dtypes(exclude=[np.number]).columns
+    for col in non_numeric_cols:
+        if X_train_clean[col].isnull().sum() > 0 or X_test_clean[col].isnull().sum() > 0:
+            # Use mode from training data
+            train_mode = X_train_clean[col].mode()
+            if len(train_mode) > 0:
+                mode_value = train_mode[0]
+            else:
+                mode_value = 0  # Fallback
+            imputation_values[col] = mode_value
+            X_train_clean[col].fillna(mode_value, inplace=True)
+            X_test_clean[col].fillna(mode_value, inplace=True)
+    
+    # Final check: ensure no NaNs remain
+    if X_train_clean.isnull().sum().sum() > 0 or X_test_clean.isnull().sum().sum() > 0:
+        # If still NaNs, fill with 0 as last resort
+        X_train_clean = X_train_clean.fillna(0)
+        X_test_clean = X_test_clean.fillna(0)
     
     return X_train_clean, X_test_clean, imputation_values
 
@@ -184,7 +210,7 @@ if df is not None:
         st.subheader("Missing Values")
         missing = df_clean.isnull().sum()
         if missing.sum() > 0:
-            st.warning("⚠️ Missing values detected in raw data. These will be properly handled during model training using statistics calculated ONLY from the training set (to prevent data leakage).")
+            st.warning("Missing values detected in raw data. These will be properly handled during model training using statistics calculated ONLY from the training set (to prevent data leakage).")
             st.dataframe(missing[missing > 0].to_frame('Missing Count'))
         else:
             st.success("No missing values found!")
@@ -293,8 +319,16 @@ if df is not None:
 
             X_train_clean, X_test_clean, imputation_values = preprocess_train_test(X_train, X_test)
             
-            if imputation_values:
-                st.info(f"📊 Missing values imputed using training set statistics: {len(imputation_values)} features")
+            # Verify no NaNs remain
+            train_nans = X_train_clean.isnull().sum().sum()
+            test_nans = X_test_clean.isnull().sum().sum()
+            
+            if train_nans > 0 or test_nans > 0:
+                st.error(f"Warning: {train_nans} NaNs in training set, {test_nans} NaNs in test set after imputation!")
+            elif imputation_values:
+                st.success(f"=All missing values handled. Imputed {len(imputation_values)} features using training set statistics.")
+            else:
+                st.info("No missing values detected in the dataset.")
             
             # Scale features
             scaler = StandardScaler()
@@ -590,15 +624,46 @@ if df is not None:
             if st.button("Run Chi-Squared Test", type="primary"):
                 X_chi = X.copy()
                 
+                # FIRST: Handle missing values before any other operations
+                # Fill numeric columns with median
+                numeric_cols = X_chi.select_dtypes(include=[np.number]).columns
+                for col in numeric_cols:
+                    if X_chi[col].isnull().sum() > 0:
+                        X_chi[col].fillna(X_chi[col].median(), inplace=True)
+                
+                # Fill non-numeric columns with mode
+                non_numeric_cols = X_chi.select_dtypes(exclude=[np.number]).columns
+                for col in non_numeric_cols:
+                    if X_chi[col].isnull().sum() > 0:
+                        mode_val = X_chi[col].mode()
+                        fill_val = mode_val[0] if len(mode_val) > 0 else 0
+                        X_chi[col].fillna(fill_val, inplace=True)
+                
+                # Ensure no NaNs remain before binning
+                X_chi = X_chi.fillna(0)
+                
                 # Bin continuous variables
                 for col in X_chi.columns:
                     if X_chi[col].dtype in ['float64', 'int64']:
                         n_unique = X_chi[col].nunique()
                         if n_unique > 10:  # Bin if more than 10 unique values
-                            X_chi[col] = pd.qcut(X_chi[col], q=5, duplicates='drop', labels=False)
-                            X_chi[col] = X_chi[col].fillna(0)
+                            try:
+                                X_chi[col] = pd.qcut(X_chi[col], q=5, duplicates='drop', labels=False)
+                                # Fill any NaNs that qcut might have created
+                                X_chi[col] = X_chi[col].fillna(0)
+                            except ValueError:
+                                # If qcut fails (e.g., all values are the same), use regular binning
+                                X_chi[col] = pd.cut(X_chi[col], bins=5, labels=False, duplicates='drop')
+                                X_chi[col] = X_chi[col].fillna(0)
+                
+                # Final check: ensure no NaNs or infinite values
+                X_chi = X_chi.replace([np.inf, -np.inf], 0)
+                X_chi = X_chi.fillna(0)
                 
                 # Ensure all values are non-negative integers
+                # Convert to float first to handle any remaining edge cases, then to int
+                X_chi = X_chi.astype(float)
+                X_chi = X_chi.fillna(0)  # Final safety check
                 X_chi = X_chi.astype(int)
                 X_chi = X_chi - X_chi.min() + 1  # Shift to positive values
                 
