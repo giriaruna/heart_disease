@@ -1,22 +1,30 @@
 import streamlit as st
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from sklearn.linear_model import LogisticRegression
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.ensemble import RandomForestClassifier, VotingClassifier
-from sklearn.metrics import (
-    accuracy_score, precision_score, recall_score, f1_score,
-    roc_auc_score, roc_curve, confusion_matrix, classification_report
-)
-from sklearn.feature_selection import chi2, SelectKBest
-import plotly.graph_objects as go
-import plotly.express as px
-import requests
-import io
+
+# Check for required dependencies
+try:
+    import pandas as pd
+    import numpy as np
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    from sklearn.model_selection import train_test_split
+    from sklearn.preprocessing import StandardScaler
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.neighbors import KNeighborsClassifier
+    from sklearn.ensemble import RandomForestClassifier, VotingClassifier
+    from sklearn.metrics import (
+        accuracy_score, precision_score, recall_score, f1_score,
+        roc_auc_score, roc_curve, confusion_matrix, classification_report
+    )
+    from sklearn.feature_selection import chi2, SelectKBest
+    import plotly.graph_objects as go
+    import plotly.express as px
+    import requests
+    import io
+except ImportError as e:
+    st.error(f"❌ Missing required dependency: {e}")
+    st.error("Please ensure all packages in requirements.txt are installed.")
+    st.info("If deploying on Streamlit Cloud, make sure requirements.txt is in the root directory and the app is redeployed.")
+    st.stop()
 
 # Page configuration
 st.set_page_config(
