@@ -70,22 +70,51 @@ def load_data():
             return None
 
 @st.cache_data
-def preprocess_data(df):
-    """Preprocess the dataset"""
+def preprocess_data_basic(df):
+    """Basic preprocessing that doesn't require train/test split (no data leakage)"""
     df_clean = df.copy()
     
-    # Handle missing values
-    if df_clean.isnull().sum().sum() > 0:
-        # For numeric columns, fill with median
-        numeric_cols = df_clean.select_dtypes(include=[np.number]).columns
-        for col in numeric_cols:
-            df_clean[col].fillna(df_clean[col].median(), inplace=True)
-    
-    # Convert target to binary (0 = no disease, 1 = disease)
+    # Only convert target to binary (this doesn't leak information)
+    # DO NOT handle missing values here - that must happen after train/test split
     if 'target' in df_clean.columns:
         df_clean['target'] = df_clean['target'].apply(lambda x: 1 if x > 0 else 0)
     
     return df_clean
+
+def preprocess_train_test(X_train, X_test):
+    """
+    Preprocess training and test data properly to avoid data leakage.
+    
+    CRITICAL: This function calculates imputation statistics (e.g., median) 
+    ONLY from the training set, then applies those same values to the test set.
+    This prevents information from the test set from influencing preprocessing,
+    which would cause data leakage and overly optimistic performance estimates.
+    
+    Args:
+        X_train: Training features (may contain missing values)
+        X_test: Test features (may contain missing values)
+    
+    Returns:
+        X_train_clean: Training features with missing values filled
+        X_test_clean: Test features with missing values filled using training statistics
+        imputation_values: Dictionary of imputation values used (for reference)
+    """
+    X_train_clean = X_train.copy()
+    X_test_clean = X_test.copy()
+    
+    # Calculate imputation values ONLY from training data
+    imputation_values = {}
+    numeric_cols = X_train_clean.select_dtypes(include=[np.number]).columns
+    
+    for col in numeric_cols:
+        if X_train_clean[col].isnull().sum() > 0:
+            # Calculate median from training data only
+            imputation_values[col] = X_train_clean[col].median()
+            # Apply to both training and test sets
+            X_train_clean[col].fillna(imputation_values[col], inplace=True)
+            X_test_clean[col].fillna(imputation_values[col], inplace=True)
+    
+    return X_train_clean, X_test_clean, imputation_values
 
 def plot_confusion_matrix(y_true, y_pred, model_name):
     """Plot confusion matrix"""
@@ -135,9 +164,9 @@ if 'df' not in st.session_state:
 df = st.session_state.df
 
 if df is not None:
-    # Preprocess data
+    # Basic preprocessing (only target conversion - no data leakage)
     if 'df_clean' not in st.session_state:
-        st.session_state.df_clean = preprocess_data(df)
+        st.session_state.df_clean = preprocess_data_basic(df)
     
     df_clean = st.session_state.df_clean
     
@@ -163,7 +192,8 @@ if df is not None:
         st.subheader("Missing Values")
         missing = df_clean.isnull().sum()
         if missing.sum() > 0:
-            st.dataframe(missing[missing > 0])
+            st.warning("⚠️ Missing values detected in raw data. These will be properly handled during model training using statistics calculated ONLY from the training set (to prevent data leakage).")
+            st.dataframe(missing[missing > 0].to_frame('Missing Count'))
         else:
             st.success("No missing values found!")
         
@@ -215,10 +245,20 @@ if df is not None:
         st.subheader("Preprocessing Steps Applied")
         st.markdown("""
         1. Loaded UCI Heart Disease Dataset
-        2. Handled missing values (filled with median for numeric columns)
-        3. Converted target to binary classification (0 = No Disease, 1 = Disease)
+        2. Converted target to binary classification (0 = No Disease, 1 = Disease)
+        3. **Missing value imputation will be handled AFTER train/test split** (to prevent data leakage)
         4. Ready for model training
+        
+        **Important:** Missing values are handled during model training using statistics calculated ONLY from the training set.
         """)
+        
+        st.subheader("Missing Values in Raw Data")
+        missing = df_clean.isnull().sum()
+        if missing.sum() > 0:
+            st.warning("⚠️ Missing values detected. These will be imputed using training set statistics during model training.")
+            st.dataframe(missing[missing > 0].to_frame('Missing Count'))
+        else:
+            st.success("No missing values found!")
         
         st.subheader("Feature Information")
         feature_info = {
@@ -250,7 +290,7 @@ if df is not None:
             X = df_clean.drop('target', axis=1)
             y = df_clean['target']
             
-            # Split data
+            # Split data FIRST (before any preprocessing that uses statistics)
             test_size = st.sidebar.slider("Test Size", 0.1, 0.4, 0.2, 0.05)
             random_state = st.sidebar.number_input("Random State", 0, 100, 42)
             
@@ -258,10 +298,17 @@ if df is not None:
                 X, y, test_size=test_size, random_state=random_state, stratify=y
             )
             
-            # Scale features
+            # NOW handle missing values using ONLY training set statistics (prevents data leakage)
+            X_train_clean, X_test_clean, imputation_values = preprocess_train_test(X_train, X_test)
+            
+            # Store imputation values for reference
+            if imputation_values:
+                st.info(f"📊 Missing values imputed using training set statistics: {len(imputation_values)} features")
+            
+            # Scale features (using training set statistics)
             scaler = StandardScaler()
-            X_train_scaled = scaler.fit_transform(X_train)
-            X_test_scaled = scaler.transform(X_test)
+            X_train_scaled = scaler.fit_transform(X_train_clean)
+            X_test_scaled = scaler.transform(X_test_clean)
             
             st.subheader("Training Configuration")
             col1, col2 = st.columns(2)
@@ -305,10 +352,10 @@ if df is not None:
                 progress_bar.progress(80)
                 n_estimators = st.sidebar.slider("Number of Trees", 10, 200, 100)
                 rf = RandomForestClassifier(n_estimators=n_estimators, random_state=random_state)
-                rf.fit(X_train, y_train)  # RF doesn't need scaling
+                rf.fit(X_train_clean, y_train)  # RF doesn't need scaling, but uses cleaned data
                 models['Random Forest'] = rf
-                predictions['Random Forest'] = rf.predict(X_test)
-                probabilities['Random Forest'] = rf.predict_proba(X_test)[:, 1]
+                predictions['Random Forest'] = rf.predict(X_test_clean)
+                probabilities['Random Forest'] = rf.predict_proba(X_test_clean)[:, 1]
                 
                 progress_bar.progress(100)
                 status_text.text("Training complete!")
@@ -317,13 +364,14 @@ if df is not None:
                 st.session_state.models = models
                 st.session_state.predictions = predictions
                 st.session_state.probabilities = probabilities
-                st.session_state.X_train = X_train
+                st.session_state.X_train = X_train_clean
                 st.session_state.X_train_scaled = X_train_scaled
-                st.session_state.X_test = X_test
+                st.session_state.X_test = X_test_clean
                 st.session_state.X_test_scaled = X_test_scaled
                 st.session_state.y_train = y_train
                 st.session_state.y_test = y_test
                 st.session_state.scaler = scaler
+                st.session_state.imputation_values = imputation_values
                 
                 st.success("All models trained successfully!")
             
