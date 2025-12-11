@@ -1,4 +1,23 @@
 import streamlit as st
+import os
+import sys
+
+# Page configuration MUST be first Streamlit command
+st.set_page_config(
+    page_title="Heart Disease Classification",
+    layout="wide"
+)
+
+# Debug: Show current directory and check for requirements.txt
+if st.sidebar.checkbox("Show Debug Info", value=False):
+    st.sidebar.write("**Current directory:**", os.getcwd())
+    st.sidebar.write("**Python path:**", sys.executable)
+    req_path = os.path.join(os.getcwd(), "requirements.txt")
+    st.sidebar.write("**Requirements.txt exists:**", os.path.exists(req_path))
+    if os.path.exists(req_path):
+        with open(req_path, 'r') as f:
+            st.sidebar.write("**Contents:**")
+            st.sidebar.code(f.read())
 
 # Check for required dependencies
 try:
@@ -23,14 +42,35 @@ try:
 except ImportError as e:
     st.error(f"❌ Missing required dependency: {e}")
     st.error("Please ensure all packages in requirements.txt are installed.")
-    st.info("If deploying on Streamlit Cloud, make sure requirements.txt is in the root directory and the app is redeployed.")
+    
+    # Show helpful troubleshooting info
+    st.markdown("### Troubleshooting Steps:")
+    st.markdown("""
+    1. **Check repository structure on GitHub:**
+       - `requirements.txt` must be in the **same directory** as `streamlit_app.py`
+       - If your app is at `heart_disease/streamlit_app.py`, then `requirements.txt` should be at `heart_disease/requirements.txt`
+    
+    2. **Verify the file is committed:**
+       - Check that `requirements.txt` is committed to your GitHub repository
+       - It should appear in the same directory as `streamlit_app.py` on GitHub
+    
+    3. **On Streamlit Cloud:**
+       - Go to "Manage app" → "Settings"
+       - Verify "Main file path" is correct
+       - Click "Reboot app" to trigger a fresh install
+    
+    4. **Check logs:**
+       - In "Manage app" → "Logs"
+       - Look for "Installing requirements from requirements.txt"
+       - If you don't see this message, the file isn't being found
+    """)
+    
+    # Try to show where requirements.txt should be
+    current_dir = os.getcwd()
+    st.info(f"**Current working directory:** `{current_dir}`")
+    st.info(f"**Expected requirements.txt location:** `{os.path.join(current_dir, 'requirements.txt')}`")
+    
     st.stop()
-
-# Page configuration
-st.set_page_config(
-    page_title="Heart Disease Classification",
-    layout="wide"
-)
 
 # Title
 st.title("Heart Disease Classification")
