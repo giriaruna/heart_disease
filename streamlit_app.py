@@ -59,7 +59,6 @@ def load_data():
         st.info("Trying alternative dataset source...")
         # Alternative: use a sample dataset structure
         try:
-            # Try loading from a different source or use sample data
             url2 = "https://raw.githubusercontent.com/plotly/datasets/master/heart.csv"
             df = pd.read_csv(url2)
             if 'target' not in df.columns:
@@ -73,9 +72,7 @@ def load_data():
 def preprocess_data_basic(df):
     """Basic preprocessing that doesn't require train/test split (no data leakage)"""
     df_clean = df.copy()
-    
-    # Only convert target to binary (this doesn't leak information)
-    # DO NOT handle missing values here - that must happen after train/test split
+
     if 'target' in df_clean.columns:
         df_clean['target'] = df_clean['target'].apply(lambda x: 1 if x > 0 else 0)
     
@@ -85,19 +82,14 @@ def preprocess_train_test(X_train, X_test):
     """
     Preprocess training and test data properly to avoid data leakage.
     
-    CRITICAL: This function calculates imputation statistics (e.g., median) 
-    ONLY from the training set, then applies those same values to the test set.
-    This prevents information from the test set from influencing preprocessing,
-    which would cause data leakage and overly optimistic performance estimates.
-    
     Args:
-        X_train: Training features (may contain missing values)
-        X_test: Test features (may contain missing values)
+        X_train: Training features
+        X_test: Test features
     
     Returns:
         X_train_clean: Training features with missing values filled
         X_test_clean: Test features with missing values filled using training statistics
-        imputation_values: Dictionary of imputation values used (for reference)
+        imputation_values: Dictionary of imputation values used
     """
     X_train_clean = X_train.copy()
     X_test_clean = X_test.copy()
@@ -164,7 +156,7 @@ if 'df' not in st.session_state:
 df = st.session_state.df
 
 if df is not None:
-    # Basic preprocessing (only target conversion - no data leakage)
+    # Basic preprocessing
     if 'df_clean' not in st.session_state:
         st.session_state.df_clean = preprocess_data_basic(df)
     
@@ -290,7 +282,7 @@ if df is not None:
             X = df_clean.drop('target', axis=1)
             y = df_clean['target']
             
-            # Split data FIRST (before any preprocessing that uses statistics)
+            # Split data
             test_size = st.sidebar.slider("Test Size", 0.1, 0.4, 0.2, 0.05)
             random_state = st.sidebar.number_input("Random State", 0, 100, 42)
             
@@ -298,14 +290,13 @@ if df is not None:
                 X, y, test_size=test_size, random_state=random_state, stratify=y
             )
             
-            # NOW handle missing values using ONLY training set statistics (prevents data leakage)
+
             X_train_clean, X_test_clean, imputation_values = preprocess_train_test(X_train, X_test)
             
-            # Store imputation values for reference
             if imputation_values:
                 st.info(f"📊 Missing values imputed using training set statistics: {len(imputation_values)} features")
             
-            # Scale features (using training set statistics)
+            # Scale features
             scaler = StandardScaler()
             X_train_scaled = scaler.fit_transform(X_train_clean)
             X_test_scaled = scaler.transform(X_test_clean)
@@ -497,10 +488,7 @@ if df is not None:
                     
                     # Create voting classifier
                     voting = 'soft' if voting_type == "Soft Voting" else 'hard'
-                    
-                    # For voting classifier, we need to handle the scaling issue
-                    # Since LR and KNN use scaled data but RF uses unscaled, we'll create
-                    # a custom approach: use predictions from already trained models
+
                     if voting == 'soft':
                         # Get probabilities from each model
                         lr_proba = st.session_state.probabilities['Logistic Regression']
@@ -554,7 +542,6 @@ if df is not None:
                         st.plotly_chart(fig_roc, use_container_width=True)
                     else:
                         # For hard voting, calculate probabilities from predictions for ROC
-                        # This is an approximation
                         y_proba_ensemble_approx = y_pred_ensemble.astype(float)
                         auc = roc_auc_score(y_test, y_proba_ensemble_approx)
                         st.metric("ROC-AUC (approximate)", f"{auc:.4f}")
@@ -597,18 +584,13 @@ if df is not None:
             st.subheader("Chi-Squared Feature Selection Test")
             
             # Apply chi-squared test
-            # Note: Chi-squared works best with non-negative integer values
-            # We'll use it on the features as-is, but in practice you might need to bin continuous variables
-            
             # Select top k features
             k = st.slider("Number of Top Features to Select", 1, len(X.columns), min(10, len(X.columns)))
             
             if st.button("Run Chi-Squared Test", type="primary"):
-                # For chi-squared, we need non-negative integer values
-                # Bin continuous variables for better chi-squared test results
                 X_chi = X.copy()
                 
-                # Bin continuous variables (those with many unique values)
+                # Bin continuous variables
                 for col in X_chi.columns:
                     if X_chi[col].dtype in ['float64', 'int64']:
                         n_unique = X_chi[col].nunique()
