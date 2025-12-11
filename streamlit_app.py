@@ -273,7 +273,7 @@ if df is not None:
         st.subheader("Missing Values in Raw Data")
         missing = df_clean.isnull().sum()
         if missing.sum() > 0:
-            st.warning("⚠️ Missing values detected. These will be imputed using training set statistics during model training.")
+            st.warning("Missing values detected. These will be imputed using training set statistics during model training.")
             st.dataframe(missing[missing > 0].to_frame('Missing Count'))
         else:
             st.success("No missing values found!")
@@ -308,16 +308,61 @@ if df is not None:
             X = df_clean.drop('target', axis=1)
             y = df_clean['target']
             
-            # Split data
+            # Hyperparameters - define sliders outside button to prevent unnecessary reruns
             test_size = st.sidebar.slider("Test Size", 0.1, 0.4, 0.2, 0.05)
             random_state = st.sidebar.number_input("Random State", 0, 100, 42)
+            k_neighbors = st.sidebar.slider("K for KNN", 1, 20, 5)
+            n_estimators = st.sidebar.slider("Number of Trees", 10, 200, 100)
             
-            X_train, X_test, y_train, y_test = train_test_split(
-                X, y, test_size=test_size, random_state=random_state, stratify=y
-            )
+            # Check if we need to resplit data (if test_size or random_state changed)
+            split_key = f"split_{test_size}_{random_state}"
+            if split_key not in st.session_state or st.session_state.get('test_size') != test_size or st.session_state.get('random_state') != random_state:
+                # Split data
+                X_train, X_test, y_train, y_test = train_test_split(
+                    X, y, test_size=test_size, random_state=random_state, stratify=y
+                )
+                
+                # Preprocess
+                X_train_clean, X_test_clean, imputation_values = preprocess_train_test(X_train, X_test)
+                
+                # Scale features
+                scaler = StandardScaler()
+                X_train_scaled = scaler.fit_transform(X_train_clean)
+                X_test_scaled = scaler.transform(X_test_clean)
+                
+                # Store in session state
+                st.session_state[split_key] = {
+                    'X_train': X_train,
+                    'X_test': X_test,
+                    'X_train_clean': X_train_clean,
+                    'X_test_clean': X_test_clean,
+                    'X_train_scaled': X_train_scaled,
+                    'X_test_scaled': X_test_scaled,
+                    'y_train': y_train,
+                    'y_test': y_test,
+                    'scaler': scaler,
+                    'imputation_values': imputation_values
+                }
+                st.session_state.test_size = test_size
+                st.session_state.random_state = random_state
+                # Clear models if data split changed
+                if 'models' in st.session_state:
+                    del st.session_state.models
+                    del st.session_state.predictions
+                    del st.session_state.probabilities
             
-
-            X_train_clean, X_test_clean, imputation_values = preprocess_train_test(X_train, X_test)
+            # Retrieve data from session state
+            split_data = st.session_state[split_key]
+            X_train = split_data['X_train']
+            X_test = split_data['X_test']
+            X_train_clean = split_data['X_train_clean']
+            X_test_clean = split_data['X_test_clean']
+            X_train_scaled = split_data['X_train_scaled']
+            X_test_scaled = split_data['X_test_scaled']
+            y_train = split_data['y_train']
+            y_test = split_data['y_test']
+            scaler = split_data['scaler']
+            imputation_values = split_data['imputation_values']
             
             # Verify no NaNs remain
             train_nans = X_train_clean.isnull().sum().sum()
@@ -330,11 +375,6 @@ if df is not None:
             else:
                 st.info("No missing values detected in the dataset.")
             
-            # Scale features
-            scaler = StandardScaler()
-            X_train_scaled = scaler.fit_transform(X_train_clean)
-            X_test_scaled = scaler.transform(X_test_clean)
-            
             st.subheader("Training Configuration")
             col1, col2 = st.columns(2)
             with col1:
@@ -343,6 +383,16 @@ if df is not None:
             with col2:
                 st.metric("Features", X_train.shape[1])
                 st.metric("Random State", random_state)
+            
+            # Check if models need retraining (if hyperparameters changed)
+            need_retrain = False
+            if 'models' not in st.session_state:
+                need_retrain = True
+            elif st.session_state.get('k_neighbors') != k_neighbors or st.session_state.get('n_estimators') != n_estimators:
+                need_retrain = True
+            
+            if need_retrain:
+                st.info("Hyperparameters changed. Click 'Train Models' to retrain with new settings.")
             
             # Train models
             if st.button("Train Models", type="primary"):
@@ -365,8 +415,7 @@ if df is not None:
                 # KNN
                 status_text.text("Training K-Nearest Neighbors...")
                 progress_bar.progress(50)
-                k = st.sidebar.slider("K for KNN", 1, 20, 5)
-                knn = KNeighborsClassifier(n_neighbors=k)
+                knn = KNeighborsClassifier(n_neighbors=k_neighbors)
                 knn.fit(X_train_scaled, y_train)
                 models['KNN'] = knn
                 predictions['KNN'] = knn.predict(X_test_scaled)
@@ -375,7 +424,6 @@ if df is not None:
                 # Random Forest
                 status_text.text("Training Random Forest...")
                 progress_bar.progress(80)
-                n_estimators = st.sidebar.slider("Number of Trees", 10, 200, 100)
                 rf = RandomForestClassifier(n_estimators=n_estimators, random_state=random_state)
                 rf.fit(X_train_clean, y_train)  # RF doesn't need scaling, but uses cleaned data
                 models['Random Forest'] = rf
@@ -397,6 +445,8 @@ if df is not None:
                 st.session_state.y_test = y_test
                 st.session_state.scaler = scaler
                 st.session_state.imputation_values = imputation_values
+                st.session_state.k_neighbors = k_neighbors
+                st.session_state.n_estimators = n_estimators
                 
                 st.success("All models trained successfully!")
             
