@@ -91,8 +91,6 @@ page = st.sidebar.radio(
     ]
 )
 
-
-
 @st.cache_data
 def load_data():
     """Load the UCI Heart Disease dataset"""
@@ -231,6 +229,112 @@ def plot_roc_curve(y_true, y_pred_proba, model_name):
     )
     return fig
 
+# ADDITION (START): Helper functions for model explanations and problem formulation
+# ====================================================================================
+def get_problem_formulation_table(model_name):
+    formulations = {
+        "Logistic Regression": {
+            "Training Data": r"$X_{\text{train\_scaled}} \in \mathbb{R}^{n \times d}, y_{\text{train}} \in \{0,1\}$",
+            "Loss Function": "Binary Cross-Entropy (Log Loss)",
+            "Training Procedure": "Gradient-based optimization (LBFGS solver)",
+            "Model Output": r"$P(y=1|x) \text{ via sigmoid}$"
+        },
+        "KNN": {
+            "Training Data": r"$X_{\text{train\_scaled}}$ with labels $y_{\text{train}}$", # Corrected LaTeX for KNN
+            "Loss Function": "None (instance-based learning)",
+            "Training Procedure": "Majority vote among k nearest neighbors",
+            "Model Output": "Class label"
+        },
+        "Random Forest": {
+            "Training Data": r"$X_{\text{train\_clean}}$ (unscaled)", # Corrected LaTeX for Random Forest
+            "Loss Function": "Gini Impurity",
+            "Training Procedure": "Bagging + greedy decision tree splitting",
+            "Model Output": "Mean class probability"
+        }
+    }
+    return formulations.get(model_name, {})
+
+def get_model_specific_explanation(model_name, visualization_type, current_metrics=None, y_test=None, y_pred=None, y_proba=None):
+    explanations = {
+        "Logistic Regression": {
+            "confusion_matrix": "Logistic Regression classifies by applying a sigmoid function to a linear combination of features, outputting a probability. If this probability exceeds 0.5, it predicts 'Disease', otherwise 'No Disease'. The confusion matrix reflects these binary predictions.",
+            "roc_curve": "Logistic Regression generates a probability score for heart disease. The ROC curve illustrates how well this model distinguishes between positive and negative classes across various probability thresholds.",
+            "classification_report": "The classification report for Logistic Regression details its performance (precision, recall, F1-score) for each class based on its binary predictions."
+        },
+        "KNN": {
+            "confusion_matrix": "K-Nearest Neighbors classifies a patient based on the majority class among its 'k' closest neighbors in the training data. This forms the basis for its predictions in the confusion matrix.",
+            "roc_curve": "For KNN, the probability of a class is often derived from the proportion of 'k' neighbors belonging to that class. The ROC curve shows its discriminative ability based on these proportions.",
+            "classification_report": "The classification report for KNN summarizes its performance metrics based on the class labels assigned by its neighborhood voting mechanism."
+        },
+        "Random Forest": {
+            "confusion_matrix": "Random Forest makes a prediction by averaging the predictions (or probabilities) of multiple decision trees. The final majority vote (or averaged probability threshold) determines the class shown in the confusion matrix.",
+            "roc_curve": "Random Forest combines probability estimates from numerous decision trees. The ROC curve demonstrates its ability to differentiate between classes using these aggregated probabilities.",
+            "classification_report": "The classification report for Random Forest evaluates its aggregated classification performance, showing precision, recall, and F1-score for each class based on its ensemble predictions."
+        }
+    }
+    
+    # Dynamic interpretation for Classification Report (specific to chosen model)
+    if visualization_type == "classification_report_detailed" and current_metrics is not None:
+        report = classification_report(y_test, y_pred, output_dict=True)
+        return f"""
+        In this binary classification task for heart disease:
+        - **Class 0 represents 'No Disease'.**
+        - **Class 1 represents 'Disease'.**
+
+        For the **{model_name}** model:
+        - **Precision for Class 0 ({report['0']['precision']:.4f}):** When the model predicts 'No Disease', it is correct {report['0']['precision']:.2%} of the time. This is important for ensuring healthy individuals are not misclassified.
+        - **Recall for Class 0 ({report['0']['recall']:.4f}):** Of all actual 'No Disease' cases, the model correctly identified {report['0']['recall']:.2%} of them. This indicates how well the model avoids false negatives for healthy patients.
+        - **F1-Score for Class 0 ({report['0']['f1-score']:.4f}):** This balances precision and recall for the 'No Disease' class, indicating overall accuracy for this group.
+
+        - **Precision for Class 1 ({report['1']['precision']:.4f}):** When the model predicts 'Disease', it is correct {report['1']['precision']:.2%} of the time. This tells us how trustworthy a positive diagnosis is.
+        - **Recall for Class 1 ({report['1']['recall']:.4f}):** Of all actual 'Disease' cases, the model correctly identified {report['1']['recall']:.2%} of them. This is often the most critical metric in medical diagnosis, as a high recall means fewer actual disease cases are missed (fewer false negatives).
+        - **F1-Score for Class 1 ({report['1']['f1-score']:.4f}):** This provides a balanced measure of the model's performance specifically for detecting heart disease.
+
+        The `accuracy`, `macro avg`, and `weighted avg` rows provide overall summary statistics across both classes.
+        """
+    
+    # Dynamic interpretation for ROC Curve (specific to chosen model)
+    if visualization_type == "roc_curve_detailed" and y_test is not None and y_proba is not None:
+        fpr, tpr, _ = roc_curve(y_test, y_proba)
+        auc_score = roc_auc_score(y_test, y_proba)
+        return f"""
+        This graph, the **Receiver Operating Characteristic (ROC) curve**, visualizes the trade-off between the True Positive Rate (TPR) and False Positive Rate (FPR) at various threshold settings.
+        - The **X-axis (False Positive Rate)** represents the proportion of healthy individuals incorrectly classified as having heart disease. A lower FPR is generally desired.
+        - The **Y-axis (True Positive Rate / Recall)** represents the proportion of actual heart disease cases correctly identified. A higher TPR is generally desired.
+        - The blue solid line shows the performance of the **{model_name}** model.
+        - The dashed gray line represents a **random classifier**, which performs no better than chance (AUC = 0.5).
+        - The **Area Under the Curve (AUC)** for {model_name} is **{auc_score:.3f}**. This value, ranging from 0 to 1, quantifies the model's overall ability to distinguish between positive and negative classes. An AUC closer to 1 indicates better discriminative power.
+        - If the curve stays high on the Y-axis and close to the left side of the X-axis, it indicates excellent performance. A curve that hugs the top-left corner means the model has a high TPR while maintaining a low FPR across different thresholds.
+        """
+    
+    # Dynamic interpretation for Confusion Matrix (specific to chosen model)
+    if visualization_type == "confusion_matrix_detailed" and y_test is not None and y_pred is not None:
+        cm = confusion_matrix(y_test, y_pred)
+        tn, fp, fn, tp = cm.ravel()
+        return f"""
+        The **Confusion Matrix** provides a detailed breakdown of the model's predictions versus the actual outcomes for the **{model_name}** model.
+        - **True Negatives (Top-Left, {tn}):** The number of patients who *did not* have heart disease and were correctly predicted as 'No Disease'.
+        - **False Positives (Top-Right, {fp}):** The number of patients who *did not* have heart disease but were incorrectly predicted as 'Disease' (Type I error).
+        - **False Negatives (Bottom-Left, {fn}):** The number of patients who *did* have heart disease but were incorrectly predicted as 'No Disease' (Type II error). This is often the most critical error in medical diagnosis.
+        - **True Positives (Bottom-Right, {tp}):** The number of patients who *did* have heart disease and were correctly predicted as 'Disease'.
+
+        A good model aims to maximize True Positives and True Negatives, while minimizing False Positives and False Negatives. The specific numbers here allow us to quantify these outcomes.
+        """
+
+    return explanations.get(model_name, {}).get(visualization_type, "")
+
+def get_model_description(model_name):
+    descriptions = {
+        "Logistic Regression": "A linear model that uses the sigmoid function to output a probability score for binary classification. It's effective for understanding feature impact.",
+        "K-Nearest Neighbors (KNN)": "A non-parametric, instance-based learning algorithm that classifies new data points based on the majority class of their 'k' nearest training examples. It's simple but can be computationally intensive for large datasets.",
+        "Random Forest": "An ensemble learning method that builds multiple decision trees during training and combines their predictions. It's robust to overfitting and captures complex relationships.",
+        "Voting Ensemble": "Combines predictions from multiple individual models (Logistic Regression, KNN, Random Forest) to produce a more robust and often more accurate final prediction by leveraging their diverse strengths."
+    }
+    return descriptions.get(model_name, "")
+# ====================================================================================
+# ADDITION (END): Helper functions for model explanations and problem formulation
+
+
 # Load data
 if 'df' not in st.session_state:
     with st.spinner("Loading dataset..."):
@@ -309,9 +413,6 @@ if df is not None:
             "[UCI Machine Learning Repository – Heart Disease Dataset]"
             "(https://archive.ics.uci.edu/ml/datasets/Heart+Disease)"
         )
-
-
-
 
     elif page == "Data Overview":
             st.header("Data Overview")
@@ -539,10 +640,17 @@ if df is not None:
             col1, col2 = st.columns(2)
             with col1:
                 st.metric("Training Samples", len(X_train))
-                st.metric("Test Samples", len(X_test))
+                st.markdown(f"*(The number of data points used to train the models, here {len(X_train)} samples.)*")
             with col2:
                 st.metric("Features", X_train.shape[1])
+                st.markdown(f"*(The number of input variables used for prediction, here {X_train.shape[1]} features.)*")
+            col3, col4 = st.columns(2)
+            with col3:
+                st.metric("Test Samples", len(X_test))
+                st.markdown(f"*(The number of unseen data points used to evaluate the models, here {len(X_test)} samples.)*")
+            with col4:
                 st.metric("Random State", random_state)
+                st.markdown(f"*(A seed used for reproducibility in data splitting and model training, currently set to {random_state}.)*")
             
             # Check if models need retraining (if hyperparameters changed)
             need_retrain = False
@@ -552,10 +660,12 @@ if df is not None:
                 need_retrain = True
             
             if need_retrain:
-                st.info("Hyperparameters changed. Click 'Train Models' to retrain with new settings.")
+                st.info("Hyperparameters changed. Click 'Click here to train the models' to retrain with new settings.")
             
             # Train models
-            if st.button("Train Models", type="primary"):
+            # ADDITION (START): Changed button text
+            if st.button("Click here to train the models", type="primary"):
+            # ADDITION (END): Changed button text
                 progress_bar = st.progress(0)
                 status_text = st.empty()
                 
@@ -666,6 +776,20 @@ if df is not None:
             selected_model = st.selectbox("Select Model for Detailed Analysis", list(models.keys()))
             
             if selected_model:
+                # ADDITION (START): Problem formulation section moved here and modified
+                # ====================================================================================
+                st.markdown("---")
+                st.subheader("Problem Formulation") # Removed "(Automatically Generated)"
+
+                st.markdown(f"**Problem Formulation for {selected_model}:**") # Show formulation for selected model only
+                formulation = get_problem_formulation_table(selected_model)
+                if formulation:
+                    # Convert specific rows to LaTeX if they contain formula-like strings
+                    for component, description in formulation.items():
+                        st.markdown(f"**{component}:** {description}") # Render directly as description contains the $
+                # ====================================================================================
+                # ADDITION (END): Problem formulation section
+
                 y_pred = predictions[selected_model]
                 y_proba = probabilities[selected_model]
                 st.markdown("""
@@ -683,18 +807,73 @@ if df is not None:
                 
                 with col1:
                     st.subheader("Confusion Matrix")
+                    # ADDITION (START): Model-specific explanation for Confusion Matrix
+                    # ====================================================================================
+                    st.markdown(get_model_specific_explanation(selected_model, 'confusion_matrix_detailed', y_test=y_test, y_pred=y_pred))
+                    # ====================================================================================
+                    # ADDITION (END): Model-specific explanation
                     fig_cm = plot_confusion_matrix(y_test, y_pred, selected_model)
                     st.pyplot(fig_cm)
                 
                 with col2:
                     st.subheader("ROC Curve")
+                    # ADDITION (START): Model-specific explanation for ROC Curve
+                    # ====================================================================================
+                    st.markdown(get_model_specific_explanation(selected_model, 'roc_curve_detailed', y_test=y_test, y_proba=y_proba))
+                    # ====================================================================================
+                    # ADDITION (END): Model-specific explanation
                     fig_roc = plot_roc_curve(y_test, y_proba, selected_model)
                     st.plotly_chart(fig_roc, use_container_width=True)
                 
                 st.subheader("Classification Report")
+                # ADDITION (START): Model-specific explanation for Classification Report
+                # ====================================================================================
+                st.markdown(get_model_specific_explanation(selected_model, 'classification_report', y_test=y_test, y_pred=y_pred))
+                # ====================================================================================
+                # ADDITION (END): Model-specific explanation
                 report = classification_report(y_test, y_pred, output_dict=True)
                 st.dataframe(pd.DataFrame(report).transpose(), use_container_width=True)
+                
+                # ADDITION (START): Explanation for 0 and 1 in Classification Report
+                # ====================================================================================
+                st.markdown("---")
+                st.subheader("Interpreting the Classification Report (Classes 0 and 1)")
+                st.markdown(get_model_specific_explanation(selected_model, 'classification_report_detailed', y_test=y_test, y_pred=y_pred))
+                # ====================================================================================
+                # ADDITION (END): Explanation for 0 and 1 in Classification Report
             
+            # ADDITION (START): Evaluation Interpretation
+            # ====================================================================================
+            st.markdown("---")
+            st.subheader("Overall Model Performance Insights") # Changed heading
+
+            st.markdown("Here's a quantitative summary of each model's performance on the test set:")
+            for model_name in models.keys():
+                metrics = metrics_df[metrics_df['Model'] == model_name].iloc[0]
+                st.markdown(f"### {model_name}")
+                st.markdown(f"""
+                - **Accuracy ({metrics['Accuracy']:.4f}):** The model correctly classified {metrics['Accuracy']:.2%} of all patients. This indicates the overall proportion of correct predictions.
+                - **Precision ({metrics['Precision']:.4f}):** When the model predicted heart disease, it was correct {metrics['Precision']:.2%} of the time. This reflects the reliability of positive predictions.
+                - **Recall (Sensitivity) ({metrics['Recall']:.4f}):** The model successfully identified {metrics['Recall']:.2%} of all actual heart disease cases. In medical contexts, a high recall is paramount to minimize false negatives.
+                - **F1-Score ({metrics['F1-Score']:.4f}):** This score of {metrics['F1-Score']:.2%} represents a balanced performance between precision and recall, especially useful when there's an uneven class distribution.
+                - **ROC-AUC ({metrics['ROC-AUC']:.4f}):** With an ROC-AUC of {metrics['ROC-AUC']:.3f}, the model demonstrates strong discriminative power, indicating its ability to distinguish between patients with and without heart disease across various classification thresholds.
+                """)
+            
+            # Additional summary based on best performing models for key metrics
+            best_acc = metrics_df.loc[metrics_df["Accuracy"].idxmax()]
+            best_rec = metrics_df.loc[metrics_df["Recall"].idxmax()]
+            best_auc = metrics_df.loc[metrics_df["ROC-AUC"].idxmax()]
+
+            st.markdown("---")
+            st.subheader("Key Comparative Takeaways")
+            st.markdown(f"""
+            - **Overall Best Accuracy:** The **{best_acc['Model']}** model achieved the highest accuracy of **{best_acc['Accuracy']:.4f}**. This means it had the highest percentage of correct predictions across both classes.
+            - **Best Disease Detection (Recall):** The **{best_rec['Model']}** model showed the highest recall of **{best_rec['Recall']:.4f}**. This is critical in medical diagnosis as it signifies the model's superior ability to correctly identify actual heart disease patients, thus minimizing missed diagnoses.
+            - **Strongest Discriminative Power (ROC-AUC):** The **{best_auc['Model']}** model demonstrated the best ROC-AUC of **{best_auc['ROC-AUC']:.4f}**. A higher ROC-AUC suggests that this model is most effective at distinguishing between positive and negative cases across all possible thresholds, making it robust to threshold choices.
+            """)
+            # ====================================================================================
+            # ADDITION (END): Evaluation Interpretation
+
             # Metrics comparison chart
             st.subheader("Metrics Comparison Chart")
             st.markdown("""
@@ -719,6 +898,28 @@ if df is not None:
                 title="Model Performance Comparison"
             )
             st.plotly_chart(fig, use_container_width=True)
+            st.markdown(f"""
+            The **Metrics Comparison Chart** visually compares the performance of Logistic Regression, KNN, and Random Forest across various metrics (Accuracy, Precision, Recall, F1-Score, ROC-AUC).
+            - The **X-axis** shows the different Machine Learning Models.
+            - The **Y-axis** represents the 'Score' for each metric, typically ranging from 0 to 1 (or 0% to 100%).
+            - Each group of bars represents a model, and different colored bars within a group represent different metrics.
+            - **Interpreting Bar Heights:** A taller bar for a specific metric generally indicates better performance for that model on that particular metric. For example, if the 'Recall' bar for KNN is taller than for Logistic Regression, it means KNN achieved a higher recall.
+            - This chart helps quickly identify which models excel in certain aspects (e.g., high recall for medical safety) and where trade-offs exist (e.g., a model might have high accuracy but lower recall, or vice versa).
+            """)
+
+            # ADDITION (START): Metric explanation
+            # ====================================================================================
+            st.markdown("---")
+            st.subheader("Detailed Metric Definitions")
+            st.markdown("""
+            - **Accuracy:** Measures the proportion of correctly classified instances (both positive and negative). It's a general measure of correctness.
+            - **Precision:** Measures the proportion of positive identifications that were actually correct. High precision means fewer **false positives** (predicting disease when there is none).
+            - **Recall (Sensitivity):** Measures the proportion of actual positives that were correctly identified. High recall means fewer **false negatives** (missing an actual disease case), which is crucial in medical screening.
+            - **F1-score:** The harmonic mean of precision and recall. It provides a single metric that balances both precision and recall, especially useful when there's an uneven class distribution.
+            - **ROC-AUC (Receiver Operating Characteristic - Area Under the Curve):** This value, from 0 to 1, quantifies the model's overall ability to discriminate between positive and negative classes across *all* possible classification thresholds. A higher AUC indicates better overall discriminative power, independent of a specific threshold.
+            """)
+            # ====================================================================================
+            # ADDITION (END): Metric explanation
     
     elif page == "Ensemble Analysis":
         st.header("Ensemble Analysis")
@@ -727,8 +928,13 @@ if df is not None:
             st.warning("Please train the models first on the 'Model Training' page.")
         else:
             st.subheader("Voting Ensemble Classifier")
+            st.markdown(f"*{get_model_description('Voting Ensemble')}*")
             
             voting_type = st.radio("Voting Type", ["Soft Voting", "Hard Voting"])
+            st.markdown("""
+            - **Soft Voting:** Averages the predicted probabilities from individual models. The class with the highest average probability is chosen. This gives more nuanced decision-making.
+            - **Hard Voting:** Uses the predicted class labels and selects the class that receives the majority vote from individual models. This is a simpler, 'winner-takes-all' approach.
+            """)
             
             if st.button("Train Ensemble Model", type="primary"):
                 models = st.session_state.models
@@ -794,25 +1000,45 @@ if df is not None:
                     col1, col2, col3, col4 = st.columns(4)
                     with col1:
                         st.metric("Accuracy", f"{acc:.4f}")
+                        st.markdown(f"*(The ensemble correctly classified {acc:.2%} of all patients.)*")
                     with col2:
                         st.metric("Precision", f"{prec:.4f}")
+                        st.markdown(f"*(When the ensemble predicted disease, it was correct {prec:.2%} of the time.)*")
                     with col3:
                         st.metric("Recall", f"{rec:.4f}")
+                        st.markdown(f"*(The ensemble identified {rec:.2%} of actual disease cases, crucial for minimizing false negatives.)*")
                     with col4:
                         st.metric("F1-Score", f"{f1:.4f}")
+                        st.markdown(f"*(The ensemble's F1-Score of {f1:.2%} balances precision and recall.)*")
                     
                     if y_proba_ensemble is not None:
                         auc = roc_auc_score(y_test, y_proba_ensemble)
                         st.metric("ROC-AUC", f"{auc:.4f}")
+                        st.markdown(f"*(The ensemble's ROC-AUC of {auc:.3f} indicates its strong discriminative power.)*")
                         
                         # ROC curve
                         fig_roc = plot_roc_curve(y_test, y_proba_ensemble, f"Ensemble ({voting_type})")
                         st.plotly_chart(fig_roc, use_container_width=True)
+                        st.markdown(f"""
+                        This ROC curve for the **Ensemble ({voting_type})** model visualizes its performance.
+                        - The **X-axis (False Positive Rate)** shows the rate of healthy individuals incorrectly classified as diseased.
+                        - The **Y-axis (True Positive Rate / Recall)** shows the rate of actual diseased individuals correctly identified.
+                        - The curve's proximity to the top-left corner (high TPR, low FPR) indicates better performance.
+                        - The **Area Under the Curve (AUC)** of **{auc:.3f}** quantifies the ensemble's overall ability to distinguish between the two classes across all thresholds. A higher AUC means better separation.
+                        """)
                     else:
                         # For hard voting, calculate probabilities from predictions for ROC
                         y_proba_ensemble_approx = y_pred_ensemble.astype(float)
                         auc = roc_auc_score(y_test, y_proba_ensemble_approx)
                         st.metric("ROC-AUC (approximate)", f"{auc:.4f}")
+                        st.markdown(f"*(The ensemble's ROC-AUC of {auc:.3f} indicates its strong discriminative power.)*")
+                        st.markdown(f"""
+                        This ROC curve for the **Ensemble ({voting_type})** model visualizes its performance based on approximate probabilities from hard voting.
+                        - The **X-axis (False Positive Rate)** shows the rate of healthy individuals incorrectly classified as diseased.
+                        - The **Y-axis (True Positive Rate / Recall)** shows the rate of actual diseased individuals correctly identified.
+                        - The curve's proximity to the top-left corner (high TPR, low FPR) indicates better performance.
+                        - The **Area Under the Curve (AUC)** of **{auc:.3f}** quantifies the ensemble's overall ability to distinguish between the two classes across all thresholds. A higher AUC means better separation.
+                        """)
                     
                     # Compare with individual models
                     st.subheader("Comparison with Individual Models")
@@ -838,6 +1064,12 @@ if df is not None:
                         color='Model'
                     )
                     st.plotly_chart(fig, use_container_width=True)
+                    st.markdown(f"""
+                    This **Accuracy Comparison: Individual vs Ensemble** bar chart visually compares the accuracy of each individual model against the ensemble model.
+                    - The **X-axis** lists the different models (Logistic Regression, KNN, Random Forest, and the Ensemble).
+                    - The **Y-axis** represents the 'Accuracy' score for each model.
+                    - **Interpreting Bar Heights:** A taller bar indicates a higher accuracy. If the ensemble's bar is taller than the individual models, it suggests that combining the models has improved overall accuracy. If an individual model's bar is taller, it might indicate that the ensemble strategy (e.g., hard vs. soft voting) or the specific combination of models was not optimal for accuracy in this particular setup. This visualization helps determine if ensemble learning provided a performance boost.
+                    """)
             
             if 'ensemble_pred' in st.session_state:
                 st.info(f"Ensemble model ({st.session_state.ensemble_voting}) is ready!")
@@ -850,6 +1082,18 @@ if df is not None:
             y = df_clean['target']
             
             st.subheader("Chi-Squared Feature Selection Test")
+            # ADDITION (START): Motivation for Feature Selection
+            st.markdown("""
+            ### Motivation for Feature Selection
+            Feature selection is a crucial step in machine learning to:
+            - **Reduce overfitting:** By removing irrelevant or redundant features, we can make models less complex and generalize better to new data.
+            - **Improve model performance:** Focusing on the most informative features can lead to more accurate and robust models.
+            - **Speed up training:** Fewer features mean less computational cost.
+            - **Enhance interpretability:** Understanding which features are most important can provide valuable insights into the underlying data and problem.
+
+            The **Chi-Squared test** is used here to assess the independence between each categorical feature and the target variable (heart disease presence). It helps identify features that are most statistically associated with the outcome.
+            """)
+            # ADDITION (END): Motivation for Feature Selection
             
             # Apply chi-squared test
             # Select top k features
@@ -930,6 +1174,15 @@ if df is not None:
                     ),
                     use_container_width=True
                 )
+                # ADDITION (START): Explanation for Feature Importance Scores table
+                st.markdown("""
+                This table displays the results of the Chi-Squared feature selection test.
+                - **Feature:** The name of the clinical attribute.
+                - **Chi-Squared Score:** A higher score indicates a stronger statistical dependency between the feature and the target variable (heart disease presence). Features with higher scores are considered more important for prediction.
+                - **P-Value:** The p-value indicates the probability of observing such a strong association by random chance. A very small p-value (typically < 0.05) suggests that the association is statistically significant, meaning the feature is likely a strong predictor.
+                - **Selected:** A checkbox indicating whether the feature was selected as one of the top `k` features (based on the slider above).
+                """)
+                # ADDITION (END): Explanation for Feature Importance Scores table
                 
                 # Visualization
                 st.subheader("Chi-Squared Scores Visualization")
@@ -943,6 +1196,15 @@ if df is not None:
                 )
                 fig.update_xaxes(tickangle=45)
                 st.plotly_chart(fig, use_container_width=True)
+                # ADDITION (START): Explanation for Chi-Squared Scores Visualization
+                st.markdown("""
+                This bar chart visually represents the Chi-Squared score for each feature.
+                - The **X-axis** lists all the available clinical features.
+                - The **Y-axis** shows the 'Chi-Squared Score'.
+                - **Bar Height:** A taller bar signifies a higher Chi-Squared score, indicating that the feature has a stronger statistical relationship with the presence of heart disease. Features with higher bars are more discriminative.
+                - **Color Coding:** Bars are colored differently to highlight which features were 'Selected' (green) as the top `k` most important features based on the slider, and which were not (lightblue). This helps quickly identify the most impactful features.
+                """)
+                # ADDITION (END): Explanation for Chi-Squared Scores Visualization
                 
                 st.subheader("Selected Features")
                 st.write(f"Top {k} features most associated with heart disease:")
@@ -968,6 +1230,16 @@ if df is not None:
         - **Random Forest**
         - A **Voting Ensemble** combining all three models
         """)
+
+        # ADDITION (START): Model-specific descriptions in Conclusion
+        # ====================================================================================
+        st.subheader("Implemented Models Overview")
+        st.markdown(f"**Logistic Regression:** {get_model_description('Logistic Regression')}")
+        st.markdown(f"**K-Nearest Neighbors (KNN):** {get_model_description('K-Nearest Neighbors (KNN)')}")
+        st.markdown(f"**Random Forest:** {get_model_description('Random Forest')}")
+        st.markdown(f"**Voting Ensemble:** {get_model_description('Voting Ensemble')}")
+        # ====================================================================================
+        # ADDITION (END): Model-specific descriptions
 
         st.subheader("Key Takeaways")
         st.markdown("""
