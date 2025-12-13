@@ -74,15 +74,24 @@ except ImportError as e:
 
 # Title
 st.title("Heart Disease Classification")
-st.markdown("**Predicting Heart Disease Using Classical Machine Learning Models**")
-st.markdown("Team: İlayda Dilek, Aruna Giri")
 
 # Sidebar for navigation
 st.sidebar.title("Navigation")
 page = st.sidebar.radio(
     "Select Page",
-    ["Data Overview", "Data Preprocessing", "Model Training", "Model Evaluation", "Ensemble Analysis", "Feature Selection"]
+    [
+        "Project Overview",
+        "Data Overview",
+        "Data Preprocessing",
+        "Model Training",
+        "Model Evaluation",
+        "Ensemble Analysis",
+        "Feature Selection",
+        "Conclusion"
+    ]
 )
+
+
 
 @st.cache_data
 def load_data():
@@ -237,67 +246,170 @@ if df is not None:
     df_clean = st.session_state.df_clean
     
     # Main content based on selected page
-    if page == "Data Overview":
-        st.header("Data Overview")
+    if page == "Project Overview":
+        st.markdown("**Predicting Heart Disease Using Classical Machine Learning Models**")
+        st.markdown("---")
+
+        st.markdown("""
+            This project investigates whether **machine learning models** can accurately predict
+            the presence of **heart disease** using common clinical measurements.
+
+            ### Problem Statement
+            Heart disease is one of the leading causes of death worldwide.
+            Early detection can significantly improve treatment outcomes.
+            This project aims to build and evaluate machine learning models that assist in
+            identifying patients at risk based on medical data.
+            """)
+
+        st.markdown("""
+            ### Dataset
+            We use the **UCI Heart Disease Dataset**, which contains medical records for over
+            **300 patients** with **14 clinical attributes**, including:
+
+            - Age
+            - Resting blood pressure
+            - Cholesterol level
+            - Maximum heart rate
+            - Exercise-induced angina
+            """)
+        st.subheader("Project Goals")
+
+        st.markdown("""
+            The primary objectives of this project are:
+
+            - To **compare multiple machine learning models**
+            (Logistic Regression, K-Nearest Neighbors, and Random Forest)
+            for binary heart disease classification.
+
+            - To evaluate whether **ensemble learning**
+            improves predictive performance, stability, and robustness.
+
+            - To apply **Chi-Squared feature selection**
+            in order to identify the medical features most strongly associated
+            with the presence of heart disease.
+
+            - To analyze how **data preprocessing and feature selection**
+            influence model performance and evaluation metrics.
+            """)
         
-        st.subheader("Dataset Information")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Total Samples", len(df_clean))
-        with col2:
-            st.metric("Features", len(df_clean.columns) - 1)
-        with col3:
-            st.metric("Target Classes", df_clean['target'].nunique() if 'target' in df_clean.columns else "N/A")
         
-        st.subheader("First Few Rows")
-        st.dataframe(df_clean.head(10), use_container_width=True)
-        
-        st.subheader("Dataset Statistics")
-        st.dataframe(df_clean.describe(), use_container_width=True)
-        
-        st.subheader("Missing Values")
-        missing = df_clean.isnull().sum()
-        if missing.sum() > 0:
-            st.warning("Missing values detected in raw data. These will be properly handled during model training using statistics calculated ONLY from the training set (to prevent data leakage).")
-            st.dataframe(missing[missing > 0].to_frame('Missing Count'))
-        else:
-            st.success("No missing values found!")
-        
-        st.subheader("Target Distribution")
-        if 'target' in df_clean.columns:
-            target_counts = df_clean['target'].value_counts()
-            fig = px.pie(
-                values=target_counts.values,
-                names=['No Disease', 'Disease'],
-                title="Heart Disease Distribution"
-            )
-            st.plotly_chart(fig, use_container_width=True)
-        
-        st.subheader("Feature Visualizations")
-        numeric_cols = df_clean.select_dtypes(include=[np.number]).columns.tolist()
-        if 'target' in numeric_cols:
-            numeric_cols.remove('target')
-        
-        selected_feature = st.selectbox("Select a feature to visualize", numeric_cols)
-        
-        if selected_feature:
-            fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+        st.markdown("---") 
+        st.subheader("Course Information") 
+        st.markdown(f"**Syllabus:** [ECE-UY 4563 – Machine Learning (Fall 2025)](https://nikopj.github.io/assets/introml25/syllabus.pdf)") 
+        st.markdown("**Instructor:** Prof. Nikola Janjušević") 
+        st.markdown("**Contact:** ml25@nyu.edu") 
+        st.markdown("---") 
+        st.subheader("Team Members") 
+        st.markdown("- **Aruna Giri** (ag8876@nyu.edu)") 
+        st.markdown("- **İlayda Dilek** (id2275@nyu.edu)") 
+        st.markdown("---")
+
+        st.markdown(
+            "**Dataset Source:** "
+            "[UCI Machine Learning Repository – Heart Disease Dataset]"
+            "(https://archive.ics.uci.edu/ml/datasets/Heart+Disease)"
+        )
+
+
+
+
+    elif page == "Data Overview":
+            st.header("Data Overview")
             
-            # Histogram
-            axes[0].hist(df_clean[selected_feature], bins=30, edgecolor='black')
-            axes[0].set_title(f'Distribution of {selected_feature}')
-            axes[0].set_xlabel(selected_feature)
-            axes[0].set_ylabel('Frequency')
+            st.subheader("Dataset Information")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total Samples", len(df_clean))
+            with col2:
+                st.metric("Features", len(df_clean.columns) - 1)
+            with col3:
+                st.metric("Target Classes", df_clean['target'].nunique() if 'target' in df_clean.columns else "N/A")
             
-            # Box plot by target
+            st.subheader("First Few Rows")
+            st.dataframe(df_clean.head(10), use_container_width=True)
+            
+            st.subheader("Dataset Statistics")
+            st.dataframe(df_clean.describe(), use_container_width=True)
+            
+            st.subheader("Missing Values")
+            missing = df_clean.isnull().sum()
+            if missing.sum() > 0:
+                st.warning("Missing values detected in raw data. These will be properly handled during model training using statistics calculated ONLY from the training set (to prevent data leakage).")
+                st.dataframe(missing[missing > 0].to_frame('Missing Count'))
+            else:
+                st.success("No missing values found!")
+            
+            st.subheader("Target Distribution")
             if 'target' in df_clean.columns:
-                df_clean.boxplot(column=selected_feature, by='target', ax=axes[1])
-                axes[1].set_title(f'{selected_feature} by Heart Disease Status')
-                axes[1].set_xlabel('Heart Disease')
-                axes[1].set_ylabel(selected_feature)
+                target_counts = df_clean['target'].value_counts()
+                fig = px.pie(
+                    values=target_counts.values,
+                    names=['No Disease', 'Disease'],
+                    title="Heart Disease Distribution"
+                )
+                st.plotly_chart(fig, use_container_width=True)
             
-            plt.tight_layout()
-            st.pyplot(fig)
+            st.subheader("Feature Visualizations")
+
+            numeric_cols = df_clean.select_dtypes(include=[np.number]).columns.tolist()
+            if 'target' in numeric_cols:
+                numeric_cols.remove('target')
+
+            selected_feature = st.selectbox(
+                "Select a feature to visualize",
+                numeric_cols
+            )
+
+            if selected_feature:
+                # ====== Plot ======
+                fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+
+                # Histogram
+                axes[0].hist(df_clean[selected_feature], bins=30, edgecolor='black')
+                axes[0].set_title(f'Distribution of {selected_feature}')
+                axes[0].set_xlabel(selected_feature)
+                axes[0].set_ylabel('Frequency')
+
+                # Box plot by target
+                df_clean.boxplot(
+                    column=selected_feature,
+                    by='target',
+                    ax=axes[1]
+                )
+                axes[1].set_title(f'{selected_feature} by Heart Disease Status')
+                axes[1].set_xlabel('Heart Disease (0 = No, 1 = Yes)')
+                axes[1].set_ylabel(selected_feature)
+
+                plt.suptitle("")  # Remove auto title
+                plt.tight_layout()
+                st.pyplot(fig)
+
+                # ====== Statistics ======
+                overall_mean = df_clean[selected_feature].mean()
+                overall_median = df_clean[selected_feature].median()
+
+                no_disease = df_clean[df_clean['target'] == 0][selected_feature]
+                disease = df_clean[df_clean['target'] == 1][selected_feature]
+
+                mean_no = no_disease.mean()
+                mean_yes = disease.mean()
+
+                median_no = no_disease.median()
+                median_yes = disease.median()
+
+               
+                st.markdown("### 📊 Feature Interpretation")
+
+                st.markdown(f"""
+                The plots above show the distribution of **{selected_feature}**:
+
+                - The **histogram** displays how values are spread across all patients.
+                - The **boxplot** shows how **{selected_feature}** differs between patients **with** and **without heart disease**, highlighting class-specific patterns.
+
+                These visualizations give a quick sense of which features may help the models distinguish between the two classes. 
+                The models themselves are trained on individual patient samples, not these summary statistics.
+                """)
+
     
     elif page == "Data Preprocessing":
         st.header("🔧 Data Preprocessing")
@@ -518,6 +630,14 @@ if df is not None:
             
             # Metrics comparison
             st.subheader("Performance Metrics Comparison")
+            st.markdown("""
+                Here we compare the core evaluation metrics across all trained models.
+                - **Accuracy:** Overall proportion of correctly classified patients.
+                - **Precision:** How often predicted 'disease' cases are actually true.
+                - **Recall (Sensitivity):** How many actual disease cases are correctly identified.
+                - **F1-Score:** Balance between precision and recall.
+                - **ROC-AUC:** Ability of the model to discriminate between patients with and without heart disease.
+                """)
             
             metrics_data = []
             for model_name in models.keys():
@@ -548,6 +668,16 @@ if df is not None:
             if selected_model:
                 y_pred = predictions[selected_model]
                 y_proba = probabilities[selected_model]
+                st.markdown("""
+                    These visualizations help us understand **how the model is performing on the test set**:
+                    - **Confusion Matrix:** Shows true positives, true negatives, false positives, and false negatives. 
+                    This helps identify whether the model tends to **miss disease cases (false negatives)** or 
+                    **overpredict disease (false positives)**.
+                    - **ROC Curve:** Plots the tradeoff between true positive rate and false positive rate across thresholds.
+                    A higher area under the curve indicates better **discriminative power**.
+                    - **Classification Report:** Breaks down precision, recall, and F1-score for each class,
+                    giving detailed insight into performance per class.
+                    """)
                 
                 col1, col2 = st.columns(2)
                 
@@ -567,6 +697,12 @@ if df is not None:
             
             # Metrics comparison chart
             st.subheader("Metrics Comparison Chart")
+            st.markdown("""
+                This grouped bar chart visualizes **all models across multiple metrics**:
+                - It allows us to quickly see which model performs best overall.
+                - Highlights tradeoffs: e.g., a model might have higher accuracy but lower recall.
+                - Useful for deciding **which model or ensemble might be most appropriate** for clinical prediction.
+                """)
             metrics_melted = metrics_df.melt(
                 id_vars='Model',
                 value_vars=['Accuracy', 'Precision', 'Recall', 'F1-Score', 'ROC-AUC'],
@@ -817,6 +953,48 @@ if df is not None:
                     st.write(f"{i}. **{feature}** (Score: {score:.2f})")
         else:
             st.error("Target column not found in dataset!")
+    
+    elif page == "Conclusion":
+        st.header("Conclusion")
+        st.snow()
+
+        st.markdown("""
+        In this project, we explored the use of **classical machine learning models**
+        to predict the presence of heart disease based on patient clinical data.
+
+        We implemented and compared the following models:
+        - **Logistic Regression**
+        - **K-Nearest Neighbors (KNN)**
+        - **Random Forest**
+        - A **Voting Ensemble** combining all three models
+        """)
+
+        st.subheader("Key Takeaways")
+        st.markdown("""
+        - Different models exhibit different strengths in predicting heart disease.
+        - **Random Forest** often performs well due to its ability to capture nonlinear relationships.
+        - **Ensemble learning** can improve robustness by combining multiple models.
+        - Proper **data preprocessing and leakage prevention** are critical for reliable evaluation.
+        """)
+
+        st.subheader("Limitations")
+        st.markdown("""
+        - The dataset is relatively small and may not represent all populations.
+        - Results depend on the chosen train/test split and model hyperparameters.
+        - This project focuses on classical ML methods rather than deep learning.
+        """)
+
+        st.subheader("Future Work")
+        st.markdown("""
+        - Tune hyperparameters more extensively using cross-validation
+        - Explore additional feature engineering techniques
+        - Test advanced ensemble methods or neural networks
+        - Evaluate model fairness and interpretability in medical settings
+        """)
+
+        st.markdown("---")
+        st.markdown("**This project demonstrates how machine learning can assist in medical decision-making, while highlighting the importance of careful evaluation and responsible data handling.**")
+
 
 else:
     st.error("Failed to load dataset. Please check your internet connection and try again.")
