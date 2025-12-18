@@ -230,7 +230,7 @@ def plot_roc_curve(y_true, y_pred_proba, model_name):
     return fig
 
 # ADDITION (START): Helper functions for model explanations and problem formulation
-# ====================================================================================
+# =========================================================================================================================================================================================================
 def get_problem_formulation_table(model_name):
     formulations = {
         "Logistic Regression": {
@@ -331,7 +331,85 @@ def get_model_description(model_name):
         "Voting Ensemble": "Combines predictions from multiple individual models (Logistic Regression, KNN, Random Forest) to produce a more robust and often more accurate final prediction by leveraging their diverse strengths."
     }
     return descriptions.get(model_name, "")
-# ====================================================================================
+
+def get_overall_model_performance_insight(model_name, metrics):
+    """Generates a plain-language insight for a single model's overall performance."""
+    accuracy = metrics['Accuracy']
+    precision = metrics['Precision']
+    recall = metrics['Recall']
+    f1 = metrics['F1-Score']
+    roc_auc = metrics['ROC-AUC']
+
+    insight = f"The {model_name} model's performance on the unseen test data indicates a general capability to identify heart disease. "
+
+    if accuracy >= 0.85:
+        insight += "It shows a strong overall correctness in its predictions, suggesting it's quite reliable. "
+    elif accuracy >= 0.75:
+        insight += "Its overall correctness is respectable, offering a good balance in identifying both disease and non-disease cases. "
+    else:
+        insight += "However, its overall correctness suggests there might be room for improvement, as it struggles with a notable portion of the predictions. "
+
+    if recall >= 0.8:
+        insight += "Crucially, its ability to detect actual heart disease cases (recall) is very high, which is excellent for minimizing missed diagnoses. "
+    elif recall >= 0.7:
+        insight += "The model identifies a good proportion of actual heart disease cases, showing a reasonable capacity to avoid false negatives. "
+    else:
+        insight += "Its recall, or ability to identify actual heart disease cases, is somewhat low, indicating it might be missing a significant number of patients who actually have the disease. "
+
+    if precision >= 0.8:
+        insight += "When it predicts heart disease, it's highly trustworthy, with very few incorrect positive diagnoses. "
+    elif precision >= 0.7:
+        insight += "Its positive predictions for heart disease are fairly reliable, suggesting a good balance in not over-diagnosing. "
+    else:
+        insight += "The reliability of its positive heart disease predictions is a concern, as it tends to incorrectly flag healthy patients as having the disease more often. "
+    
+    if roc_auc >= 0.85:
+        insight += "The model demonstrates excellent discriminative power, effectively distinguishing between patients with and without heart disease across various thresholds. "
+    elif roc_auc >= 0.75:
+        insight += "Its ability to differentiate between the two classes is solid, providing a good separation between healthy and diseased patients. "
+    else:
+        insight += "The model's discriminative power, while present, could be strengthened, indicating some overlap in its ability to separate the two patient groups. "
+
+    return insight.strip()
+
+def get_ensemble_performance_insight(ensemble_metrics, individual_metrics_df, voting_type):
+    """Generates a plain-language insight for the ensemble model's overall performance."""
+    acc = ensemble_metrics['Accuracy']
+    rec = ensemble_metrics['Recall']
+    auc = ensemble_metrics['ROC-AUC']
+
+    best_individual_acc = individual_metrics_df['Accuracy'].max()
+    best_individual_rec = individual_metrics_df['Recall'].max()
+    best_individual_auc = individual_metrics_df['ROC-AUC'].max()
+
+    insight = f"The {voting_type} Ensemble model's performance represents a combined effort from its individual components. "
+
+    if acc > best_individual_acc:
+        insight += f"Notably, the ensemble achieved a higher accuracy ({acc:.2%}) than any single model ({best_individual_acc:.2%}), suggesting that combining their predictions successfully leveraged their diverse strengths. "
+    elif abs(acc - best_individual_acc) < 0.01: # Within 1%
+        insight += f"The ensemble's accuracy ({acc:.2%}) is very competitive with the best individual model ({best_individual_acc:.2%}), indicating a robust and consistent performance without significant degradation. "
+    else:
+        insight += f"While the ensemble provides a consolidated view, its accuracy ({acc:.2%}) did not surpass the best individual model ({best_individual_acc:.2%}), which might suggest the voting strategy or combination could be further optimized. "
+
+    if rec > best_individual_rec:
+        insight += f"More importantly in a medical context, its recall ({rec:.2%}) is higher than any individual model ({best_individual_rec:.2%}), signifying an enhanced capability to detect actual heart disease cases and minimize critical false negatives. "
+    elif abs(rec - best_individual_rec) < 0.01:
+        insight += f"The ensemble maintains a strong recall ({rec:.2%}), on par with the best individual model ({best_individual_rec:.2%}), which is crucial for not missing actual disease cases. "
+    else:
+        insight += f"Its recall ({rec:.2%}) is slightly lower than the best individual model's ({best_individual_rec:.2%}), which is an area that might warrant further investigation to ensure no actual disease cases are overlooked. "
+    
+    if auc > best_individual_auc:
+        insight += f"With an improved ROC-AUC ({auc:.3f}) compared to individual models ({best_individual_auc:.3f}), the ensemble demonstrates a superior overall ability to distinguish between healthy and diseased patients across various thresholds. "
+    elif abs(auc - best_individual_auc) < 0.01:
+        insight += f"The ensemble exhibits robust discriminative power, with an ROC-AUC ({auc:.3f}) closely matching that of the best individual model ({best_individual_auc:.3f}), confirming its strong capability in separating the classes. "
+    else:
+        insight += f"The ensemble's ROC-AUC ({auc:.3f}) is slightly lower than the best individual model's ({best_individual_auc:.3f}), indicating that while the ensemble is generally strong, there might be a slight compromise in overall separability compared to the top individual performer. "
+
+    insight += f"This {voting_type} approach aims to leverage the 'wisdom of the crowd' to provide a more reliable and generalized prediction, often smoothing out the weaknesses of individual models."
+
+    return insight.strip()
+
+# =========================================================================================================================================================================================================
 # ADDITION (END): Helper functions for model explanations and problem formulation
 
 
@@ -777,7 +855,7 @@ if df is not None:
             
             if selected_model:
                 # ADDITION (START): Problem formulation section moved here and modified
-                # ====================================================================================
+                # =========================================================================================================================================================================================================
                 st.markdown("---")
                 st.subheader("Problem Formulation") # Removed "(Automatically Generated)"
 
@@ -787,7 +865,7 @@ if df is not None:
                     # Convert specific rows to LaTeX if they contain formula-like strings
                     for component, description in formulation.items():
                         st.markdown(f"**{component}:** {description}") # Render directly as description contains the $
-                # ====================================================================================
+                # =========================================================================================================================================================================================================
                 # ADDITION (END): Problem formulation section
 
                 y_pred = predictions[selected_model]
@@ -808,9 +886,9 @@ if df is not None:
                 with col1:
                     st.subheader("Confusion Matrix")
                     # ADDITION (START): Model-specific explanation for Confusion Matrix
-                    # ====================================================================================
+                    # =========================================================================================================================================================================================================
                     st.markdown(get_model_specific_explanation(selected_model, 'confusion_matrix_detailed', y_test=y_test, y_pred=y_pred))
-                    # ====================================================================================
+                    # =========================================================================================================================================================================================================
                     # ADDITION (END): Model-specific explanation
                     fig_cm = plot_confusion_matrix(y_test, y_pred, selected_model)
                     st.pyplot(fig_cm)
@@ -818,32 +896,32 @@ if df is not None:
                 with col2:
                     st.subheader("ROC Curve")
                     # ADDITION (START): Model-specific explanation for ROC Curve
-                    # ====================================================================================
+                    # =========================================================================================================================================================================================================
                     st.markdown(get_model_specific_explanation(selected_model, 'roc_curve_detailed', y_test=y_test, y_proba=y_proba))
-                    # ====================================================================================
+                    # =========================================================================================================================================================================================================
                     # ADDITION (END): Model-specific explanation
                     fig_roc = plot_roc_curve(y_test, y_proba, selected_model)
                     st.plotly_chart(fig_roc, use_container_width=True)
                 
                 st.subheader("Classification Report")
                 # ADDITION (START): Model-specific explanation for Classification Report
-                # ====================================================================================
+                # =========================================================================================================================================================================================================
                 st.markdown(get_model_specific_explanation(selected_model, 'classification_report', y_test=y_test, y_pred=y_pred))
-                # ====================================================================================
+                # =========================================================================================================================================================================================================
                 # ADDITION (END): Model-specific explanation
                 report = classification_report(y_test, y_pred, output_dict=True)
                 st.dataframe(pd.DataFrame(report).transpose(), use_container_width=True)
                 
                 # ADDITION (START): Explanation for 0 and 1 in Classification Report
-                # ====================================================================================
+                # =========================================================================================================================================================================================================
                 st.markdown("---")
                 st.subheader("Interpreting the Classification Report (Classes 0 and 1)")
                 st.markdown(get_model_specific_explanation(selected_model, 'classification_report_detailed', y_test=y_test, y_pred=y_pred))
-                # ====================================================================================
+                # =========================================================================================================================================================================================================
                 # ADDITION (END): Explanation for 0 and 1 in Classification Report
             
             # ADDITION (START): Evaluation Interpretation
-            # ====================================================================================
+            # =========================================================================================================================================================================================================
             st.markdown("---")
             st.subheader("Overall Model Performance Insights") # Changed heading
 
@@ -851,13 +929,7 @@ if df is not None:
             for model_name in models.keys():
                 metrics = metrics_df[metrics_df['Model'] == model_name].iloc[0]
                 st.markdown(f"### {model_name}")
-                st.markdown(f"""
-                - **Accuracy ({metrics['Accuracy']:.4f}):** The model correctly classified {metrics['Accuracy']:.2%} of all patients. This indicates the overall proportion of correct predictions.
-                - **Precision ({metrics['Precision']:.4f}):** When the model predicted heart disease, it was correct {metrics['Precision']:.2%} of the time. This reflects the reliability of positive predictions.
-                - **Recall (Sensitivity) ({metrics['Recall']:.4f}):** The model successfully identified {metrics['Recall']:.2%} of all actual heart disease cases. In medical contexts, a high recall is paramount to minimize false negatives.
-                - **F1-Score ({metrics['F1-Score']:.4f}):** This score of {metrics['F1-Score']:.2%} represents a balanced performance between precision and recall, especially useful when there's an uneven class distribution.
-                - **ROC-AUC ({metrics['ROC-AUC']:.4f}):** With an ROC-AUC of {metrics['ROC-AUC']:.3f}, the model demonstrates strong discriminative power, indicating its ability to distinguish between patients with and without heart disease across various classification thresholds.
-                """)
+                st.markdown(get_overall_model_performance_insight(model_name, metrics))
             
             # Additional summary based on best performing models for key metrics
             best_acc = metrics_df.loc[metrics_df["Accuracy"].idxmax()]
@@ -871,7 +943,7 @@ if df is not None:
             - **Best Disease Detection (Recall):** The **{best_rec['Model']}** model showed the highest recall of **{best_rec['Recall']:.4f}**. This is critical in medical diagnosis as it signifies the model's superior ability to correctly identify actual heart disease patients, thus minimizing missed diagnoses.
             - **Strongest Discriminative Power (ROC-AUC):** The **{best_auc['Model']}** model demonstrated the best ROC-AUC of **{best_auc['ROC-AUC']:.4f}**. A higher ROC-AUC suggests that this model is most effective at distinguishing between positive and negative cases across all possible thresholds, making it robust to threshold choices.
             """)
-            # ====================================================================================
+            # =========================================================================================================================================================================================================
             # ADDITION (END): Evaluation Interpretation
 
             # Metrics comparison chart
@@ -906,20 +978,6 @@ if df is not None:
             - **Interpreting Bar Heights:** A taller bar for a specific metric generally indicates better performance for that model on that particular metric. For example, if the 'Recall' bar for KNN is taller than for Logistic Regression, it means KNN achieved a higher recall.
             - This chart helps quickly identify which models excel in certain aspects (e.g., high recall for medical safety) and where trade-offs exist (e.g., a model might have high accuracy but lower recall, or vice versa).
             """)
-
-            # ADDITION (START): Metric explanation
-            # ====================================================================================
-            st.markdown("---")
-            st.subheader("Detailed Metric Definitions")
-            st.markdown("""
-            - **Accuracy:** Measures the proportion of correctly classified instances (both positive and negative). It's a general measure of correctness.
-            - **Precision:** Measures the proportion of positive identifications that were actually correct. High precision means fewer **false positives** (predicting disease when there is none).
-            - **Recall (Sensitivity):** Measures the proportion of actual positives that were correctly identified. High recall means fewer **false negatives** (missing an actual disease case), which is crucial in medical screening.
-            - **F1-score:** The harmonic mean of precision and recall. It provides a single metric that balances both precision and recall, especially useful when there's an uneven class distribution.
-            - **ROC-AUC (Receiver Operating Characteristic - Area Under the Curve):** This value, from 0 to 1, quantifies the model's overall ability to discriminate between positive and negative classes across *all* possible classification thresholds. A higher AUC indicates better overall discriminative power, independent of a specific threshold.
-            """)
-            # ====================================================================================
-            # ADDITION (END): Metric explanation
     
     elif page == "Ensemble Analysis":
         st.header("Ensemble Analysis")
@@ -1011,10 +1069,15 @@ if df is not None:
                         st.metric("F1-Score", f"{f1:.4f}")
                         st.markdown(f"*(The ensemble's F1-Score of {f1:.2%} balances precision and recall.)*")
                     
+                    ensemble_metrics_data = {
+                        'Accuracy': acc, 'Precision': prec, 'Recall': rec, 'F1-Score': f1, 'ROC-AUC': None
+                    }
+
                     if y_proba_ensemble is not None:
                         auc = roc_auc_score(y_test, y_proba_ensemble)
                         st.metric("ROC-AUC", f"{auc:.4f}")
                         st.markdown(f"*(The ensemble's ROC-AUC of {auc:.3f} indicates its strong discriminative power.)*")
+                        ensemble_metrics_data['ROC-AUC'] = auc
                         
                         # ROC curve
                         fig_roc = plot_roc_curve(y_test, y_proba_ensemble, f"Ensemble ({voting_type})")
@@ -1032,6 +1095,7 @@ if df is not None:
                         auc = roc_auc_score(y_test, y_proba_ensemble_approx)
                         st.metric("ROC-AUC (approximate)", f"{auc:.4f}")
                         st.markdown(f"*(The ensemble's ROC-AUC of {auc:.3f} indicates its strong discriminative power.)*")
+                        ensemble_metrics_data['ROC-AUC'] = auc
                         st.markdown(f"""
                         This ROC curve for the **Ensemble ({voting_type})** model visualizes its performance based on approximate probabilities from hard voting.
                         - The **X-axis (False Positive Rate)** shows the rate of healthy individuals incorrectly classified as diseased.
@@ -1040,6 +1104,24 @@ if df is not None:
                         - The **Area Under the Curve (AUC)** of **{auc:.3f}** quantifies the ensemble's overall ability to distinguish between the two classes across all thresholds. A higher AUC means better separation.
                         """)
                     
+                    # ADDITION (START): Overall Ensemble Performance Insights
+                    # =========================================================================================================================================================================================================
+                    st.markdown("---")
+                    st.subheader("Overall Ensemble Performance Insights")
+                    # Need individual metrics to compare against
+                    individual_metrics_df = pd.DataFrame([
+                        {'Model': name, 
+                         'Accuracy': accuracy_score(y_test, st.session_state.predictions[name]),
+                         'Precision': precision_score(y_test, st.session_state.predictions[name]),
+                         'Recall': recall_score(y_test, st.session_state.predictions[name]),
+                         'F1-Score': f1_score(y_test, st.session_state.predictions[name]),
+                         'ROC-AUC': roc_auc_score(y_test, st.session_state.probabilities[name])}
+                        for name in models.keys()
+                    ])
+                    st.markdown(get_ensemble_performance_insight(ensemble_metrics_data, individual_metrics_df, voting_type))
+                    # =========================================================================================================================================================================================================
+                    # ADDITION (END): Overall Ensemble Performance Insights
+
                     # Compare with individual models
                     st.subheader("Comparison with Individual Models")
                     individual_metrics = []
@@ -1232,13 +1314,13 @@ if df is not None:
         """)
 
         # ADDITION (START): Model-specific descriptions in Conclusion
-        # ====================================================================================
+        # =========================================================================================================================================================================================================
         st.subheader("Implemented Models Overview")
         st.markdown(f"**Logistic Regression:** {get_model_description('Logistic Regression')}")
         st.markdown(f"**K-Nearest Neighbors (KNN):** {get_model_description('K-Nearest Neighbors (KNN)')}")
         st.markdown(f"**Random Forest:** {get_model_description('Random Forest')}")
         st.markdown(f"**Voting Ensemble:** {get_model_description('Voting Ensemble')}")
-        # ====================================================================================
+        # =========================================================================================================================================================================================================
         # ADDITION (END): Model-specific descriptions
 
         st.subheader("Key Takeaways")
@@ -1270,3 +1352,4 @@ if df is not None:
 
 else:
     st.error("Failed to load dataset. Please check your internet connection and try again.")
+
